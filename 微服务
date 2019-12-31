@@ -1,0 +1,170 @@
+# 微服务技术
+
+一、SpringCloud
+
+      SpringCloud是一系列框架的集合，它由很多组件组成，每个组件承担的作用不一样。常用的有Eureka, Ribbon, Feign, Hystrix, Config, Zuul。
+
+Eureka
+
+服务注册与发现，由服务端和客户端两个组件组成。
+Eureka Server 是一个注册中心，用来保存各个服务端的端口号和主机名，服务端负责监听各个注册表中各个服务的状态，如果服务在一段时间内没有心跳，Eureka Server会踢出该服务。（服务剔除，自我保护）
+Eureka Client 是客户端将服务通过REST注册到注册中心，注册中心将服务保存在注册表里（双层Map)，(服务注册，服务续约，服务下线）
+
+Ribbon
+
+服务之间调用和负载均衡。通过在RestTemplate上加@LoadBalanced，使用Ribbon中的负载均衡算法得到需要的服务信息。目前负载均衡策略有七种：
+0b935944551ca971cc9a817369ce2b4a.png
+
+Feign
+
+集成了Ribbon的负载均衡机制，是一个申明式服务调用，封装了HTTP流程，让服务之间的调用更面向接口化
+3c945c27a42bd14ececabbb01d0c5855.png
+
+Hystrix
+
+Hystrix是一个供分布式系统使用，提供延迟和容错功能，保证复杂的分布系统在面临不可避免的失败时，仍能有其弹性。SpringCloud使用Hystrix组件提供断路器、资源隔离与自我修复功能, 配合Ribbon, Feign能很好的实现服务之间的调用和容错。
+
+Zuul
+
+SpringCloud Zuul是一个网关路由器,负责整个服务系统的路由转发，身份认证，接口地址拦截等，实质就是一个过滤器，浏览器或者第三方接口不直接和服务客户端进行数据交互，都需要经过网关，通过网关将用户请求进行转发。Zuul提供了一个框架，可以对过滤器进行动态的加载，编译，运行。过滤器之间没有直接的相互通信。他们是通过一个RequestContext的静态类来进行数据传递的。RequestContext类中有ThreadLocal变量来记录每个Request所需要传递的数据。
+
+1. 自定义过滤器
+
+110d826267b2762d07ca7a68ca3fecce.png
+
+public class SimpleFilter extends ZuulFilter {
+
+        private final Logger logger = LoggerFactory.getLogger(TokenFilter.class);
+
+        @Override
+        public String filterType() {
+            return "pre"; // 可以在请求被路由之前调用
+        }
+
+        @Override
+        public int filterOrder() {
+            return 0; // filter执行顺序，通过数字指定 ,优先级为0，数字越大，优先级越低
+        }
+
+        @Override
+        public boolean shouldFilter() {
+            return true;// 是否执行该过滤器，此处为true，说明需要过滤
+        }
+
+        @Override
+        public Object run() {
+            RequestContext ctx = RequestContext.getCurrentContext();
+            HttpServletRequest request = ctx.getRequest();
+
+            request.getRequestURL().toString());
+
+            String userId = request.getParameter("userId");// 获取请求的参数
+
+            if (StringUtils.isNotBlank(userId)) {
+                ctx.setSendZuulResponse(true); //对请求进行路由
+                ctx.setResponseStatusCode(200);
+                ctx.set("isSuccess", true);
+                return null;
+            } else {
+                ctx.setSendZuulResponse(false); //不对其进行路由
+                ctx.setResponseStatusCode(400);
+                ctx.setResponseBody("userId is empty");
+                ctx.set("isSuccess", false);
+                return null;
+            }
+        }
+
+    }
+
+2. 路由转发
+
+      动态路由需要达到可持久化配置，动态刷新的效果。不仅要能满足从spring的配置文件properties加载路由信息，还需要从数据库加载我们的配置。另外一点是，路由信息在容器启动时就已经加载进入了内存，我们希望配置完成后，实施发布，动态刷新内存中的路由信息，达到不停机维护路由信息的效果。配置application.properties
+
+#配置在配置文件中的路由信息
+zuul.routes.books.path=/books/**
+zuul.routes.books.url=http://localhost:8090
+#不使用注册中心,会带来侵入性
+ribbon.eureka.enabled=false
+3. 路由断熔
+
+      当后端服务出现异常的时候，我们不希望将异常抛出给最外层，期望服务可以自动进行一降级。Zuul给我们提供了这样的支持。当某个服务出现异常时，直接返回我们预设的信息。
+我们通过自定义的fallback方法，并且将其指定给某个route来实现该route访问出问题的熔断处理。主要继承ZuulFallbackProvider接口来实现，ZuulFallbackProvider默认有两个方法，一个用来指明熔断拦截哪个服务，一个定制返回内容。
+
+public interface ZuulFallbackProvider {
+   /**
+     * The route this fallback will be used for.
+     * @return The route the fallback will be used for.
+     */
+    public String getRoute();
+
+    /**
+     * Provides a fallback response.
+     * @return The fallback response.
+     */
+    public ClientHttpResponse fallbackResponse();
+}
+4. 路由重试
+
+      有时候因为网络或者其它原因，服务可能会暂时的不可用，这个时候我们希望可以再次对服务进行重试，Zuul也帮我们实现了此功能，需要结合Spring Retry 一起来实现。配置application.properties
+
+#是否开启重试功能
+zuul.retryable=true
+#对当前服务的重试次数
+ribbon.MaxAutoRetries=2
+#切换相同Server的次数
+ribbon.MaxAutoRetriesNextServer=0
+二、 SpringBoot技术
+
+特点和优势
+
+      SpringBoot是在Spring4.0基础上进行了二次开发，减少了对配置文件的依赖，遵循约定大于配置的方式。总结SpringBoot增加了一下优势：
+
+SpringBoot内置有tomcat，jetty服务器 使用SpringBoot开发项目不用单独部署在tomcat之类的容器中。
+快速创建独立运行的项目以及与其他组件的集成，只需要在pom.xml文件中引用相应-start组件 例如 Redis, MQ, ES等等，在SpringBoot启动时会主动扫描加载组件中的内容
+ead72afa381895e784e9936aa0684ea3.png
+无需繁琐的XML配置，采用注解配置，大量的自动化配置（约定大于配置）。
+常用注解
+
+@SpringBootApplication
+
+@SpringBootConfiguration
+
+@ComponentScan
+
+@EnableAutoConfiguration
+
+@Import(AutoConfigurationImportSelector.class)
+
+@AutoConfigurationPackage
+
+@ImportResource
+
+@AutoConfigurationBefore
+
+@AutoConfigurationAfter
+
+启动流程
+
+aa415d3c89c6ac9bf4d00768e130e88d.png
+SpringBoot启动过程
+
+工作原理
+
+d2cadbac2984e798b91f3191647aa710.png
+
+三、 微服务
+
+      微服务是一种架构风格，一个大型复杂软件应用由一个或多个微服务组成。系统中的各个微服务可被独立部署，各个微服务之间是松耦合的。每个微服务仅关注于完成一件任务并很好地完成该任务。在所有情况下，每个任务代表着一个小的业务能力。下面引用是2014年3月Martin Fowler首次提出“Microservices”的原文：
+The term "Microservice Architecture" has sprung up over the last few years to describe a particular way of designing software applications as suites of independently deployable services. While there is no precise definition of this architectural style, there are certain common characteristics around organization around business capability, automated deployment, intelligence in the endpoints, and decentralized control of languages and data.
+微服务九大特性：
+
+"组件化”与“多服务”
+“围绕“业务功能”组织团队
+“做产品”而不是“做项目”
+“智能端点”与“傻瓜管道”
+“去中心化”地治理技术
+“去中心化”地管理数据
+“基础设施”自动化
+“容错”设计
+“演进式”设计
+文章推荐：微服务
