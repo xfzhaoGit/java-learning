@@ -13,7 +13,7 @@ Eureka Client 是客户端将服务通过REST注册到注册中心，注册中�
 Ribbon
 
 服务之间调用和负载均衡。通过在RestTemplate上加@LoadBalanced，使用Ribbon中的负载均衡算法得到需要的服务信息。目前负载均衡策略有七种：
-0b935944551ca971cc9a817369ce2b4a.png
+evernotecid://8972D753-AFA0-4FAE-AE79-6FCEA540CB58/appyinxiangcom/25011546/ENResource/p60
 
 Feign
 
